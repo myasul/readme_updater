@@ -2,6 +2,8 @@
 import configparser
 import requests
 import base64
+from grip import export
+from xhtml2pdf import pisa
 
 
 class ReadMeUpdater:
@@ -11,7 +13,7 @@ class ReadMeUpdater:
         self._api_url = config.get('GITHUB', 'API_URL')
         self._accept = config.get('GITHUB', 'ACCEPT')
 
-    def get_readme(self):
+    def pull_latest_readme(self):
         headers = {'Accept': self._accept}
         github_readme_url = ("{api_url}/repos/{username}/" +
                              "{repository}/readme").format(
@@ -28,21 +30,44 @@ class ReadMeUpdater:
                 self._username,
                 self._repository
             )
-            with open(filename, "w+", encoding="utf-8") as file:
-                file.write(readme.decode())
+            with open(filename, "w+", encoding="utf-8") as md:
+                md.write(readme.decode())
 
-    def update_readme(self):
+    def push_updated_readme(self):
         pass
 
     def generate_preview(self):
-        pass
+        # TODO :: Add File Error Handling
+        readme_filename = "{}_{}_README.md".format(
+            self._username,
+            self._repository
+        )
+
+        preview_filename = "{}_{}_README_preview.pdf".format(
+            self._username,
+            self._repository
+        )
+
+        html_filename = "{}_{}_README_preview.html".format(
+            self._username,
+            self._repository
+        )
+        export(path=readme_filename, out_filename=html_filename)
+
+        # with open(html_filename, "r") as html,\
+        #         open(preview_filename, "w+b") as preview:
+        #     pisa_status = pisa.CreatePDF(html.read(), preview)
+
+        # return pisa_status.err
 
 
 def main():
     config = configparser.ConfigParser()
     config.read('config.ini')
     readme = ReadMeUpdater(config)
-    readme.get_readme()
+    readme.pull_latest_readme()
+    preview_status = readme.generate_preview()
+    print(preview_status)
 
 
 if __name__ == "__main__":
