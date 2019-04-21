@@ -2,8 +2,8 @@
 import configparser
 import requests
 import base64
+from subprocess import call
 from grip import export
-from xhtml2pdf import pisa
 
 
 class ReadMeUpdater:
@@ -37,7 +37,6 @@ class ReadMeUpdater:
         pass
 
     def generate_preview(self):
-        # TODO :: Add File Error Handling
         readme_filename = "{}_{}_README.md".format(
             self._username,
             self._repository
@@ -52,13 +51,22 @@ class ReadMeUpdater:
             self._username,
             self._repository
         )
+        self._generate_html(readme_filename, html_filename)
+        self._generate_pdf(preview_filename, html_filename, readme_filename)
+
+    def _generate_html(self, readme_filename, html_filename):
+        # TODO :: Add File Error Handling
         export(path=readme_filename, out_filename=html_filename)
 
-        # with open(html_filename, "r") as html,\
-        #         open(preview_filename, "w+b") as preview:
-        #     pisa_status = pisa.CreatePDF(html.read(), preview)
-
-        # return pisa_status.err
+    def _generate_pdf(self, preview_filename, html_filename, readme_filename):
+        # TODO :: Add in README.md to install wkthmtopdf
+        call([
+            "wkhtmltopdf",
+            "-q",
+            "--title", readme_filename,
+            html_filename,
+            preview_filename
+        ])
 
 
 def main():
