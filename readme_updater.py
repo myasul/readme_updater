@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-import configparser
 import requests
 import base64
+from configparser import ConfigParser, NoSectionError
 from subprocess import call
 from grip import export
 
 
 class ReadMeUpdater:
     def __init__(self, config):
+        self._config = config
         self._username = config.get('GITHUB', 'USERNAME')
         self._repository = config.get('GITHUB', 'REPOSITORY')
         self._api_url = config.get('GITHUB', 'API_URL')
@@ -68,14 +69,21 @@ class ReadMeUpdater:
             preview_filename
         ])
 
+    def update_config_file(self, section, option, value):
+        try:
+            with open("config.ini", "w") as configfile:
+                self._config.write(configfile)
+        except NoSectionError:
+            # TODO :: Add more logic
+            pass
+
 
 def main():
-    config = configparser.ConfigParser()
+    config = ConfigParser()
     config.read('config.ini')
     readme = ReadMeUpdater(config)
     readme.pull_latest_readme()
-    preview_status = readme.generate_preview()
-    print(preview_status)
+    readme.generate_preview()
 
 
 if __name__ == "__main__":
