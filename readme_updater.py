@@ -1,31 +1,42 @@
 #!/usr/bin/env python3
+"""GITHUB UPDATER
+
+Creating the description for this script is included in my TODO list.
+"""
+
 import requests
 import base64
 import json
 import traceback
-from configparser import ConfigParser, NoSectionError
+import argparse
+from argparse import RawTextHelpFormatter
+from configparser import ConfigParser, NoSectionError, NoOptionError
 from subprocess import call
 from grip import export
 
-USER_AGENT = 'myasul'
-USERNAME = 'myasul'
-PASSWORD = ''
+# TODO :: Handle all the following scenarios
+# 1. Invalid repository
+# 2. Invalid username
+# 3. Invalid sha and path
 
 # CONSTANTS
 GITHUB_SECTION = 'GITHUB'
+API_URL = 'https://api.github.com'
+ACCEPT = 'application/vnd.github.v3+json'
 
 
 class ReadMeUpdater:
-    def __init__(self, config):
+    def __init__(self, config, repository):
         self._config = config
+        self._repository = repository
 
     def pull_latest_readme(self):
         headers = self._get_authorization_headers()
         github_readme_url = ('{api_url}/repos/{username}/' +
                              '{repository}/readme').format(
-            api_url=self._get_config('api_url'),
+            api_url=API_URL,
             username=self._get_config('username'),
-            repository=self._get_config('repository'))
+            repository=self._repository)
 
         resp = requests.get(github_readme_url, headers=headers)
         resp_dict = resp.json()
@@ -80,9 +91,9 @@ class ReadMeUpdater:
 
                 github_update_url = ('{api_url}/repos/{username}/' +
                                      '{repository}/contents/{path}').format(
-                    api_url=self._get_config('api_url'),
+                    api_url=API_URL,
                     username=self._get_config('username'),
-                    repository=self._get_config('repository'),
+                    repository=self._repository,
                     path=path)
 
                 resp = requests.put(github_update_url,
@@ -108,7 +119,8 @@ class ReadMeUpdater:
 
     def _generate_html(self):
         # TODO :: Add File Error Handling
-        export(path=self._build_filename('md'), out_filename=self._build_filename('html'))
+        export(path=self._build_filename('md'),
+               out_filename=self._build_filename('html'))
 
     def _generate_pdf(self):
         # TODO :: Add in README.md to install wkthmtopdf
@@ -123,7 +135,7 @@ class ReadMeUpdater:
     def _build_filename(self, file_type):
         identier = "{}_{}".format(
             self._get_config('username'),
-            self._get_config('repository')
+            self._repository
         )
 
         if file_type == 'md':
@@ -139,7 +151,7 @@ class ReadMeUpdater:
     def _update_config(self, option, value):
         try:
             self._config.set(GITHUB_SECTION, option, value)
-        except NoSectionError:
+        except (NoSectionError, NoOptionError) as e:
             # TODO :: Add more logic
             pass
         else:
@@ -149,26 +161,61 @@ class ReadMeUpdater:
     def _get_config(self, option):
         try:
             return self._config.get(GITHUB_SECTION, option)
-        except NoSectionError:
+        except (NoSectionError, NoOptionError) as e:
             # TODO :: Add more logic
             pass
 
     def _get_authorization_headers(self):
         return {
-            'Accept': self._get_config('accept'),
+            'Accept': ACCEPT,
             'Authorization': "token " + self._get_config('access_token'),
             'User-Agent': self._get_config('username')
         }
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=RawTextHelpFormatter
+    )
+
+    repository_help = 'The name of the repository where the README.md is located.'
+    parser.add_argument(
+        'repository',
+        type=str,
+        default='',
+        help=repository_help
+    )
+
+    action_help = 'Actions that the script can perform. Specifying "pull"'\
+                ' would extract the README.md file from the specified'\
+                ' repository on GitHub. Specifying "push" would push the'\
+                ' local README.md file to GitHub if there are any changes.'\
+                ' Specifying "preview" would generate an html and pdf file' \
+                ' from the README.md so that the user can have an idea of' \
+                ' what it will look like in GitHub.'
+    parser.add_argument(
+        'action',
+        type=str,
+        default='pull',
+        choices=['push', 'pull', 'preview'],
+        help=action_help
+    )
+
+    args = parser.parse_args()
+
     config = ConfigParser()
     config.read('config.ini')
-    readme = ReadMeUpdater(config)
-    # readme.pull_latest_readme()
-    readme.push_updated_readme()
-    readme.generate_preview()
+    readme = ReadMeUpdater(config, args.repository)
 
+    if args.action == 'pull':
+        readme.pull_latest_readme()
+        readme.generate_preview()
+    elif args.action == 'push':
+        readme.push_updated_readme()
+        readme.generate_preview()
+    elif args.action == 'preview':
+        readme.generate_preview()
 
 if __name__ == '__main__':
     main()
