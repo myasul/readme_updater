@@ -11,44 +11,35 @@ USER_AGENT = 'myasul'
 USERNAME = 'myasul'
 PASSWORD = ''
 
+# CONSTANTS
+GITHUB_SECTION = 'GITHUB'
+
 
 class ReadMeUpdater:
     def __init__(self, config):
         self._config = config
-        self._username = config.get('GITHUB', 'username')
-        self._repository = config.get('GITHUB', 'repository')
-        self._api_url = config.get('GITHUB', 'api_url')
-        self._accept = config.get('GITHUB', 'accept')
-        self._html_filename = ''
-        self._preview_filename = ''
-        self._readme_filename = ''
-        self._generate_filenames()
 
     def pull_latest_readme(self):
-        headers = {'Accept': self._accept}
+        headers = self._get_authorization_headers()
         github_readme_url = ('{api_url}/repos/{username}/' +
                              '{repository}/readme').format(
-            api_url=self._api_url,
-            username=self._username,
-            repository=self._repository)
+            api_url=self._get_config('api_url'),
+            username=self._get_config('username'),
+            repository=self._get_config('repository'))
 
         resp = requests.get(github_readme_url, headers=headers)
         resp_dict = resp.json()
 
         # Always update SHA and path of the README file
-        self._update_config_file(
-            'GITHUB', 'readme_sha', resp_dict.get('sha'))
+        self._update_config(
+            'readme_sha', resp_dict.get('sha'))
 
-        self._update_config_file(
-            'GITHUB', 'readme_path', resp_dict.get('path'))
+        self._update_config(
+            'readme_path', resp_dict.get('path'))
 
         if resp_dict.get('content'):
             readme = base64.b64decode(resp_dict.get('content'))
-            filename = '{}_{}_README.md'.format(
-                self._username,
-                self._repository
-            )
-            with open(filename, 'w+', encoding='utf-8') as md:
+            with open(self._build_filename('md'), 'w+', encoding='utf-8') as md:
                 md.write(readme.decode())
 
     def push_updated_readme(self):
@@ -59,7 +50,7 @@ class ReadMeUpdater:
             pass
 
         try:
-            with open(self._readme_filename, "r") as readme_file:
+            with open(self._build_filename('md'), "r") as readme_file:
 
                 content = readme_file.read()
 
@@ -68,11 +59,7 @@ class ReadMeUpdater:
 
                 content = base64.b64encode(content).decode()
 
-                headers = {
-                    'Accept': self._accept,
-                    'Authorization': "Basic " + base64.b64encode((USERNAME + ":" + PASSWORD).encode("utf-8")).decode("utf-8").replace('\n', ''),
-                    'User-Agent': USER_AGENT
-                }
+                headers = self._get_authorization_headers()
 
                 params = {
                     'message': 'Update README.md',
@@ -89,28 +76,25 @@ class ReadMeUpdater:
                     },
                 }
 
-                path = self._config.get('GITHUB', 'readme_path')
+                path = self._get_config('readme_path')
 
                 github_update_url = ('{api_url}/repos/{username}/' +
                                      '{repository}/contents/{path}').format(
-                                         api_url=self._api_url,
-                                         username=self._username,
-                                         repository=self._repository,
-                                         path=path
-                )
-
-                print('GITHUB URL: {}'.format(github_update_url))
+                    api_url=self._get_config('api_url'),
+                    username=self._get_config('username'),
+                    repository=self._get_config('repository'),
+                    path=path)
 
                 resp = requests.put(github_update_url,
                                     data=json.dumps(params), headers=headers)
 
                 if resp.status_code != 200:
                     # TODO :: Add validation
-                    pass
+                    return
 
                 resp_json = resp.json()
-                self._update_config_file(
-                    'GITHUB', 'readme_sha', resp_json.get('sha'))
+                self._update_config(
+                    'readme_sha', resp_json.get('content').get('sha'))
 
         except IOError:
             print("ERROR!")
@@ -124,49 +108,64 @@ class ReadMeUpdater:
 
     def _generate_html(self):
         # TODO :: Add File Error Handling
-        export(path=self._readme_filename, out_filename=self._html_filename)
+        export(path=self._build_filename('md'), out_filename=self._build_filename('html'))
 
     def _generate_pdf(self):
         # TODO :: Add in README.md to install wkthmtopdf
         call([
             'wkhtmltopdf',
             '-q',
-            '--title', self._readme_filename,
-            self._html_filename,
-            self._preview_filename
+            '--title', self._build_filename('md'),
+            self._build_filename('html'),
+            self._build_filename('pdf')
         ])
 
-    def _generate_filenames(self):
-        self._readme_filename = '{}_{}_README.md'.format(
-            self._username,
-            self._repository
+    def _build_filename(self, file_type):
+        identier = "{}_{}".format(
+            self._get_config('username'),
+            self._get_config('repository')
         )
 
-        self._preview_filename = '{}_{}_README_preview.pdf'.format(
-            self._username,
-            self._repository
-        )
+        if file_type == 'md':
+            return '{}_README.md'.format(identier)
+        elif file_type == 'html':
+            return '{}_README_preview.html'.format(identier)
+        elif file_type == "pdf":
+            return '{}_README_preview.pdf'.format(identier)
+        else:
+            # TODO Add invalid file typ error
+            return ""
 
-        self._html_filename = '{}_{}_README_preview.html'.format(
-            self._username,
-            self._repository
-        )
-
-    def _update_config_file(self, section, option, value):
+    def _update_config(self, option, value):
         try:
-            self._config.set(section, option, value)
-            with open('config.ini', 'w') as configfile:
-                self._config.write(configfile)
+            self._config.set(GITHUB_SECTION, option, value)
         except NoSectionError:
             # TODO :: Add more logic
             pass
+        else:
+            with open('config.ini', 'w') as configfile:
+                self._config.write(configfile)
+
+    def _get_config(self, option):
+        try:
+            return self._config.get(GITHUB_SECTION, option)
+        except NoSectionError:
+            # TODO :: Add more logic
+            pass
+
+    def _get_authorization_headers(self):
+        return {
+            'Accept': self._get_config('accept'),
+            'Authorization': "token " + self._get_config('access_token'),
+            'User-Agent': self._get_config('username')
+        }
 
 
 def main():
     config = ConfigParser()
     config.read('config.ini')
     readme = ReadMeUpdater(config)
-    readme.pull_latest_readme()
+    # readme.pull_latest_readme()
     readme.push_updated_readme()
     readme.generate_preview()
 
