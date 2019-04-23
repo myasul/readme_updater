@@ -6,12 +6,9 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-markdown = "*"
-weasyprint = "*"
 requests = "*"
-xhtml2pdf = "*"
 grip = "*"
-python-wkhtmltopdf = "*"
+requests-toolbelt = "*"
 
 [requires]
 python_version = "3.6"
